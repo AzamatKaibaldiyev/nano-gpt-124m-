@@ -1,7 +1,14 @@
 # nano-gpt-124m-
 
-Implementation of a GPT-style model from scratch, following [Andrej Karpathy’s nanoGPT tutorial](https://github.com/karpathy/build-nanogpt).
+This repo contains implementations of GPT-2 (124M parameters) from scratch, based on Karpathy's nanoGPT tutorial.
 
-## 📌 About
-This repo is my project where I reimplemented the GPT-2 (124M parameter) model based on Karpathy’s tutorial.  
-I may extend this with my own experiments, modifications, and notes.
+## Versions / Branches
+
+- **main** – stable, runs on a single GPU.
+- **multi-gpu** – branch that supports multi-GPU training.
+
+## Usage
+
+- To use the single-GPU version: `git checkout main`
+- To use the multi-GPU version: `git checkout multi-gpu`
+
