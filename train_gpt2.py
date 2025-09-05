@@ -238,26 +238,49 @@ class DataLoaderLite:
 
 
 
+#set up DDP
+import os
+ddp = int(os.environ.get('RANK', -1)) !=-1
+if ddp:
+     assert torch.cuda.is_available()
+     init_process_group(backend='nccl')
+     ddp_rank = int(os.environ['RANK'])
+     ddp_local_rank = int(os.environ['LOCAL_RANK'])
+     ddp_world_size = int(os.environ['WORLD_SIZE'])
+     device = f'cuda:{ddp_local_rank}'
+     torch.cuda.set_device(device)
+     master_process = ddp_rank == 0
+else:
+     ddp_rank = 0
+     ddp_local_rank = 0
+     ddp_world_size = 1
+     master_process = True
 
+     device = 'cpu'
+     if torch.cuda.is_available():
+          device = 'cuda'
+     print(f"using device: {device}")
 
+device_type = "cuda" if device.startswith("cuda") else "cpu"
 # ______________________________________________________
-device = 'cpu'
-if torch.cuda.is_available():
-     device = 'cuda'
-print(f"using device: {device}")
 
 torch.manual_seed(1337)
 if torch.cuda.is_available():
      torch.cuda.manual_seed(1337)
 
 total_batch_size = 524288  #0.5M tokens
-B = 4
+B = 32
 T = 1024
-assert total_batch_size % (B *T) ==0, 'make sure divisible by one'
-grad_accum_steps = total_batch_size//(B*T)
-print(f"total desired batch size: {total_batch_size}")
-print(f"=> calculated grad acc steps: {grad_accum_steps}")
+assert total_batch_size % (B *T * ddp_world_size) ==0, 'make sure divisible by one'
+grad_accum_steps = total_batch_size//(B*T* ddp_world_size)
+if master_process:
+     print(f"total desired batch size: {total_batch_size}")
+     print(f"=> calculated grad acc steps: {grad_accum_steps}")
 
+print('I am GPU ', ddp_rank)
+print('BYE')
+
+import sys; sys.exit(0)
 
 train_loader = DataLoaderLite(B=B, T=T)
 
