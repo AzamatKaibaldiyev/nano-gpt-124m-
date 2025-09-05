@@ -251,7 +251,7 @@ if torch.cuda.is_available():
      torch.cuda.manual_seed(1337)
 
 total_batch_size = 524288  #0.5M tokens
-B = 32
+B = 64
 T = 1024
 assert total_batch_size % (B *T) ==0, 'make sure divisible by one'
 grad_accum_steps = total_batch_size//(B*T)
