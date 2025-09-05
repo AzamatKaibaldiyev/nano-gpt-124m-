@@ -301,6 +301,8 @@ torch.set_float32_matmul_precision('high')
 # model
 model = GPT(GPTConfig(vocab_size=50304))
 model.to(device)
+#optimize
+optimizer = model.configure_optimizers(weight_decay=0.1, learning_rate = 6e-4, device_type = device)
 model = torch.compile(model)
 if ddp:
      model = DDP(model, device_ids=[ddp_local_rank])
@@ -322,9 +324,6 @@ def get_lr(it):
 
 
 import time
-#optimize
-# optimizer = torch.optim.AdamW(model.parameters(),lr = 3e-4, betas =(0.9, 0.95), eps = 1e-8)
-optimizer = model.configure_optimizers(weight_decay=0.1, learning_rate = 6e-4, device_type = device)
 
 for step in range(max_steps):
      t0 = time.time()
