@@ -238,8 +238,17 @@ class DataLoaderLite:
 
 
 
+# simple launch:
+# python train_gpt2.py
+# DDP launch for e.g. 2 GPUs:
+# torchrun --standalone --nproc_per_node=2 train_gpt2.py
+
 #set up DDP
 import os
+from torch.distributed import init_process_group, destroy_process_group
+from torch.nn.parallel import DistributedDataParallel as DDP
+import torch.distributed as dist
+
 ddp = int(os.environ.get('RANK', -1)) !=-1
 if ddp:
      assert torch.cuda.is_available()
