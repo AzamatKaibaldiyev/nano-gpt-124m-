@@ -251,7 +251,7 @@ if torch.cuda.is_available():
      torch.cuda.manual_seed(1337)
 
 total_batch_size = 524288  #0.5M tokens
-B = 64
+B = 32
 T = 1024
 assert total_batch_size % (B *T) ==0, 'make sure divisible by one'
 grad_accum_steps = total_batch_size//(B*T)
@@ -266,7 +266,7 @@ torch.set_float32_matmul_precision('high')
 #logits
 model = GPT(GPTConfig(vocab_size=50304))
 model.to(device)
-model = torch.compile(model, backend="eager")
+model = torch.compile(model)
 
 max_lr = 6e-4
 min_lr = max_lr *0.1
