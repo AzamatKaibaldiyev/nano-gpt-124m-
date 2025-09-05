@@ -266,7 +266,7 @@ torch.set_float32_matmul_precision('high')
 #logits
 model = GPT(GPTConfig(vocab_size=50304))
 model.to(device)
-model = torch.compile(model)
+model = torch.compile(model, backend="eager")
 
 max_lr = 6e-4
 min_lr = max_lr *0.1
