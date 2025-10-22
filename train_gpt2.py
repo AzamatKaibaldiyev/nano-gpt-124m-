@@ -211,23 +211,42 @@ import warnings
 warnings.filterwarnings("ignore", message="Can't initialize NVML")
 import tiktoken
 import inspect
+import numpy as np
+
+def load_tokens(filename):
+     npt  = np.load(filename)
+     ptt = torch.tensor(npt, dtype = torch.long)
+     return ptt
 
 class DataLoaderLite:
-     def __init__(self, B, T, process_rank, num_processes):
+     def __init__(self, B, T, process_rank, num_processes, split):
           self.B = B
           self.T = T
           self.process_rank = process_rank
           self.num_processes = num_processes
+          assert split in {'train', 'val'}
 
-          enc = tiktoken.get_encoding('gpt2')
-          with open('input.txt', 'r') as f:
-               text = f.read()
-          tokens = enc.encode(text)
-          self.tokens = torch.tensor(tokens)
-          if master_process:
-               print(f"loaded {len(self.tokens)} tokens")
-               print(f"1 epoch = {len(self.tokens)//(B*T)} batches")
+          # get shard file names
+          data_root = "edu_fineweb10B"
+          shards = os.listdir(data_root)
+          shards = [s for s in shards if split in s]
+          shards = sorted(shards)
+          shards = [os.path.join(data_root, s) for s in shards]
+          assert len(shards)>0, f"no shards found for split {split}"
+          if master_process: print(f"found {len(shards)} shards for split {split}")
+          self.current_shard = 0
+          self.tokens = load_tokens(self.shards[self.current_shard])
 
+          # enc = tiktoken.get_encoding('gpt2')
+          # with open('input.txt', 'r') as f:
+          #      text = f.read()
+          # tokens = enc.encode(text)
+          # self.tokens = torch.tensor(tokens)
+          # if master_process:
+          #      print(f"loaded {len(self.tokens)} tokens")
+          #      print(f"1 epoch = {len(self.tokens)//(B*T)} batches")
+
+          
           self.current_position = self.B*self.T*self.process_rank
 
      def next_batch(self):
@@ -235,8 +254,11 @@ class DataLoaderLite:
           buf = self.tokens[self.current_position : self.current_position+B*T+1]
           x = buf[:-1].view(B,T)
           y = buf[1:].view(B,T)
+          #next position
           self.current_position += B*T*self.num_processes
           if self.current_position+(B*T*self.num_processes+1)>len(self.tokens):
+               self.current_shard = (self.current_shard +1) % len(self.shards)
+               self.tokens = load_tokens(self.shards[self.current_shard])
                self.current_position = self.B*self.T*self.process_rank
           return x, y
 
@@ -294,7 +316,7 @@ if master_process:
 # print('BYE')
 # import sys; sys.exit(0)
 
-train_loader = DataLoaderLite(B=B, T=T, process_rank = ddp_rank, num_processes=ddp_world_size)
+train_loader = DataLoaderLite(B=B, T=T, process_rank = ddp_rank, num_processes=ddp_world_size, split = "train")
 
 torch.set_float32_matmul_precision('high')
 
@@ -309,8 +331,8 @@ if ddp:
 
 max_lr = 6e-4
 min_lr = max_lr *0.1
-warmup_steps = 10
-max_steps = 12
+warmup_steps = 715
+max_steps = 19073  # will be 1 epoch for 10B tokens and batch size of 512K tokens
 
 def get_lr(it):
      if it<warmup_steps:
