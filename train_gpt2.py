@@ -246,8 +246,6 @@ class DataLoaderLite:
           self.tokens = load_tokens(self.shards[self.current_shard])
           self.current_position = self.B*self.T*self.process_rank
 
-
-
           # enc = tiktoken.get_encoding('gpt2')
           # with open('input.txt', 'r') as f:
           #      text = f.read()
@@ -256,8 +254,6 @@ class DataLoaderLite:
           # if master_process:
           #      print(f"loaded {len(self.tokens)} tokens")
           #      print(f"1 epoch = {len(self.tokens)//(B*T)} batches")
-
-          
 
      def next_batch(self):
           B, T = self.B, self.T
@@ -273,6 +269,32 @@ class DataLoaderLite:
           return x, y
 
 
+
+
+# -----------------------------------------------------------------------------
+# helper function for HellaSwag eval
+# takes tokens, mask, and logits, returns the index of the completion with the lowest loss
+
+def get_most_likely_row(tokens, mask, logits):
+    # evaluate the autoregressive loss at all positions
+    shift_logits = (logits[..., :-1, :]).contiguous()
+    shift_tokens = (tokens[..., 1:]).contiguous()
+    flat_shift_logits = shift_logits.view(-1, shift_logits.size(-1))
+    flat_shift_tokens = shift_tokens.view(-1)
+    shift_losses = F.cross_entropy(flat_shift_logits, flat_shift_tokens, reduction='none')
+    shift_losses = shift_losses.view(tokens.size(0), -1)
+    # now get the average loss just for the completion region (where mask == 1), in each row
+    shift_mask = (mask[..., 1:]).contiguous() # we must shift mask, so we start at the last prompt token
+    masked_shift_losses = shift_losses * shift_mask
+    # sum and divide by the number of 1s in the mask
+    sum_loss = masked_shift_losses.sum(dim=1)
+    avg_loss = sum_loss / shift_mask.sum(dim=1)
+    # now we have a loss for each of the 4 completions
+    # the one with the lowest loss should be the most likely
+    pred_norm = avg_loss.argmin().item()
+    return pred_norm
+
+# -----------------------------------------------------------------------------
 
 # simple launch:
 # python train_gpt2.py
@@ -354,6 +376,7 @@ warmup_steps = 715
 max_steps = 19073  # will be 1 epoch for 10B tokens and batch size of 512K tokens
 eval_gen_every_steps = 20
 print_gpu_every_steps = 10
+check_gpu = True
 
 def get_lr(it):
      if it<warmup_steps:  #linear warmup fore warmaup steps
@@ -511,21 +534,21 @@ for step in range(max_steps):
      tokens_per_sec = (tokens_processed)/(dt)
 
      if master_process:
-          gpu_stats_str = ""  # Default to empty string
-          
-          # Only check GPU stats every N steps (and not on step 0)
-          if (step > 0 and step % print_gpu_every_steps == 0) or last_step:
-               try:
-                    result = subprocess.run(
-                         ['nvidia-smi', f'--id={ddp_local_rank}', '--query-gpu=utilization.gpu,memory.used', '--format=csv,noheader,nounits'],
-                         capture_output=True, text=True, check=True
-                    )
-                    util, mem_used = result.stdout.strip().split(',')
-                    # Add a trailing comma for clean printing
-                    gpu_stats_str = f"/n gpu_util: {util.strip()}%, mem: {mem_used.strip()}MiB, /n"
-                    print(gpu_stats_str)
-               except Exception as e:
-                    gpu_stats_str = "gpu_stats: N/A," # In case nvidia-smi fails
+          if check_gpu:
+               gpu_stats_str = ""  # Default to empty string
+               # Only check GPU stats every N steps (and not on step 0)
+               if (step > 0 and step % print_gpu_every_steps == 0) or last_step:
+                    try:
+                         result = subprocess.run(
+                              ['nvidia-smi', f'--id={ddp_local_rank}', '--query-gpu=utilization.gpu,memory.used,,memory.total', '--format=csv,noheader,nounits'],
+                              capture_output=True, text=True, check=True
+                         )
+                         util, mem_used, mem_total = result.stdout.strip().split(',')
+                         # Add a trailing comma for clean printing
+                         gpu_stats_str = f"\n gpu_util: {util.strip()}%, mem: {mem_used.strip()}MiB / {mem_total.strip()}MiB \n"
+                         print(gpu_stats_str)
+                    except Exception as e:
+                         gpu_stats_str = "gpu_stats: N/A," # In case nvidia-smi fails
 
 
      if master_process:
