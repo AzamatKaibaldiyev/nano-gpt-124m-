@@ -370,13 +370,13 @@ if ddp:
      model = DDP(model, device_ids=[ddp_local_rank])
 raw_model = model.module if ddp else model
 
-max_lr = 6e-4
-min_lr = max_lr *0.1
+max_lr = 6e-4 * 4
+min_lr = max_lr * 0.1 / 4.0
 warmup_steps = 715
 max_steps = 19073  # will be 1 epoch for 10B tokens and batch size of 512K tokens
-eval_gen_every_steps = 20
+eval_gen_every_steps = 250
 print_gpu_every_steps = 10
-check_gpu = True
+check_gpu = False
 
 def get_lr(it):
      if it<warmup_steps:  #linear warmup fore warmaup steps
