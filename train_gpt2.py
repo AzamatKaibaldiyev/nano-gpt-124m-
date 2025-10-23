@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-
+import subprocess
 
 # ___________________________________________
 
@@ -352,6 +352,7 @@ min_lr = max_lr *0.1
 warmup_steps = 715
 max_steps = 19073  # will be 1 epoch for 10B tokens and batch size of 512K tokens
 eval_gen_every_steps = 20
+print_gpu_every_steps = 10
 
 def get_lr(it):
      if it<warmup_steps:  #linear warmup fore warmaup steps
@@ -379,7 +380,7 @@ for step in range(max_steps):
      last_step = (step==max_steps -1 )
 
      # evaluate on val every N steps
-     if step % eval_gen_every_steps or last_step:
+     if step % eval_gen_every_steps==0 or last_step:
           model.eval()
           val_loader.reset()
           with torch.no_grad():
@@ -474,6 +475,25 @@ for step in range(max_steps):
      dt = (t1-t0) # in milliseconds
      tokens_processed = train_loader.B*train_loader.T * grad_accum_steps*ddp_world_size
      tokens_per_sec = (tokens_processed)/(dt)
+
+     if master_process:
+          gpu_stats_str = ""  # Default to empty string
+          
+          # Only check GPU stats every N steps (and not on step 0)
+          if (step > 0 and step % print_gpu_every_steps == 0) or last_step:
+               try:
+                    result = subprocess.run(
+                         ['nvidia-smi', f'--id={ddp_local_rank}', '--query-gpu=utilization.gpu,memory.used', '--format=csv,noheader,nounits'],
+                         capture_output=True, text=True, check=True
+                    )
+                    util, mem_used = result.stdout.strip().split(',')
+                    # Add a trailing comma for clean printing
+                    gpu_stats_str = f"/n gpu_util: {util.strip()}%, mem: {mem_used.strip()}MiB, /n"
+                    print(gpu_stats_str)
+               except Exception as e:
+                    gpu_stats_str = "gpu_stats: N/A," # In case nvidia-smi fails
+
+
      if master_process:
           print(f"step {step}, loss: {loss_accum.item():.6f}, lr: {lr:.5f}, norm: {norm:.4f}, dt: {dt:.2f}s, tok/sec: {tokens_per_sec:.2f}")
           with open(log_file, "a") as f:
@@ -481,40 +501,3 @@ for step in range(max_steps):
 if ddp:
      destroy_process_group()
 
-
-
-
-# import sys; sys.exit(0)
-# #############################################33
-
-# num_return_sequences = 5
-# max_length = 30
-
-# model = GPT.from_pretrained('gpt2')
-# model.eval()
-# model.to('cuda')
-
-# import tiktoken
-# enc = tiktoken.get_encoding('gpt2')
-# tokens = enc.encode("Hello, I'm a language model,")
-# tokens = torch.tensor(tokens, dtype=torch.long)
-# tokens = tokens.unsqueeze(0).repeat(num_return_sequences, 1)
-# x = tokens.to('cuda')
-
-# torch.manual_seed(42)
-# torch.cuda.manual_seed(42)
-
-# while x.size(1) < max_length:
-#      with torch.no_grad(): 
-#           logits = model(x)
-#           logits = logits[:,-1,:]
-#           probs = F.softmax(logits, dim=-1)
-#           topk_probs, topk_indices = torch.topk(probs, 50, dim=-1)
-#           ix = torch.multinomial(topk_probs, 1)
-#           xcol = torch.gather(topk_indices, -1, ix)
-#           x = torch.cat((x, xcol), dim=-1)
-
-# for i in range(num_return_sequences):
-#      tokens = x[i,:max_length].tolist()
-#      decoded = enc.decode(tokens)
-#      print(">", decoded)
