@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 import subprocess
+from hellaswag import render_example, iterate_examples
 
 # ___________________________________________
 
@@ -410,6 +411,39 @@ for step in range(max_steps):
                          'val_loss': val_loss_accum.item()
                     }
                     torch.save(checkpoint, checkpoint_path)
+
+     # once in a while evaluate hellaswag
+     if (step % eval_gen_every_steps == 0 or last_step) and (not model_compile):
+          num_correct_norm = 0
+          num_total = 0
+          for i, example in enumerate(iterate_examples("val")):
+               # only process examples where i % ddp_world_size == ddp_rank
+               if i % ddp_world_size != ddp_rank:
+                    continue
+               # render the example into tokens and labels
+               _, tokens, mask, label = render_example(example)
+               tokens = tokens.to(device)
+               mask = mask.to(device)
+               # get the logits
+               with torch.no_grad():
+                    with torch.autocast(device_type=device_type, dtype=torch.bfloat16):
+                         logits, loss = model(tokens)
+                         pred_norm = get_most_likely_row(tokens, mask, logits)
+               num_total += 1
+               num_correct_norm += int(pred_norm == label)
+          # reduce the stats across all processes
+          if ddp:
+               num_total = torch.tensor(num_total, dtype=torch.long, device=device)
+               num_correct_norm = torch.tensor(num_correct_norm, dtype=torch.long, device=device)
+               dist.all_reduce(num_total, op=dist.ReduceOp.SUM)
+               dist.all_reduce(num_correct_norm, op=dist.ReduceOp.SUM)
+               num_total = num_total.item()
+               num_correct_norm = num_correct_norm.item()
+          acc_norm = num_correct_norm / num_total
+          if master_process:
+               print(f"HellaSwag accuracy: {num_correct_norm}/{num_total}={acc_norm:.4f}")
+               with open(log_file, "a") as f:
+                    f.write(f"{step} hella {acc_norm:.4f}\n")
 
      # once in a while generate from the model (except step 0, which is noise)
      if ((step > 0 and step % eval_gen_every_steps == 0) or last_step) and (not model_compile):
