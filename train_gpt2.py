@@ -318,7 +318,7 @@ if torch.cuda.is_available():
 enc = tiktoken.get_encoding('gpt2')
 
 total_batch_size = 524288  #0.5M tokens
-B = 32
+B = 64
 T = 1024
 assert total_batch_size % (B *T * ddp_world_size) ==0, 'make sure divisible by one'
 grad_accum_steps = total_batch_size//(B*T* ddp_world_size)
@@ -340,7 +340,7 @@ model = GPT(GPTConfig(vocab_size=50304))
 model.to(device)
 #optimize
 optimizer = model.configure_optimizers(weight_decay=0.1, learning_rate = 6e-4, device_type = device)
-model_compile = True
+model_compile = False
 if model_compile:
      model = torch.compile(model)
 if ddp:
