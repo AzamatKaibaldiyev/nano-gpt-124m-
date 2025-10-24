@@ -8,7 +8,7 @@ I may extend this with my own experiments, modifications, and notes.
 
 ## 📈 Training Results
 
-I trained the 124M parameter model on a 10-billion token subset of the FineWeb dataset. The plot below shows the training and validation loss, as well as the HellaSwag evaluation accuracy, over ~19,000 training steps.
+I trained the 124M parameter model on a 10-billion token subset of the FineWeb dataset. The plot below shows the training and validation loss, as well as the HellaSwag evaluation accuracy, over ~19,000 training steps. The training took around 10 hours on 2 A100-80GB GPUs with distributed training.
 
 ![Training and Evaluation Curves](training_curve.png)
 
